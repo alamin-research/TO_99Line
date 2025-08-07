@@ -1,6 +1,7 @@
 # The purpose of this file is to contain all of the functions used for FEA operations
 
 import numpy as np
+import scipy
 
 ## Construct Global Stiffness Matrices
 
@@ -41,6 +42,42 @@ def q4_element_gaussian_quadrature_isoparametric_integration_2points(node_coords
             k_el += np.dot(np.transpose(B), np.dot(constitutive_matrix,B))
 
     return k_el
+
+## Global Stiffness Functions
+
+def global_stiffness_2d_variable_density(k_el_function,element_nodes, node_coordinates, constitutive_matrix):
+
+    num_nodes = node_coordinates.shape[0]
+    num_ele = element_nodes.shape[0]
+    dof_per_node = 2
+
+    # Create the empty global stiffness matrix
+    k_global_stiffness_matrix_lil = scipy.sparse.lil_matrix((num_nodes*dof_per_node, num_nodes*dof_per_node))  # Creates a dof x dof zero matrix
+    
+    # Assemble the global stiffness matrix
+    for ele in range(num_ele):
+
+        # Get the nodes for this element and their coordinates
+        ele_nodes = element_nodes[ele, :]
+        ele_node_coords = node_coordinates[ele_nodes.flatten(),:]
+
+        # get the elemental stiffness matrix
+        k_ele = k_el_function(ele_node_coords,constitutive_matrix)
+
+        # get the relevent dofs and add the elemental stiffness to the global
+        nodal_dofs = []
+        for node in ele_nodes:
+            for i in range(dof_per_node):
+                nodal_dofs.append(node*dof_per_node+i)
+
+        # add the element stiffness to the global
+        # TODO optimize this
+        for i in range(len(nodal_dofs)):
+            for j in range(len(nodal_dofs)):
+                k_global_stiffness_matrix_lil[nodal_dofs[i],nodal_dofs[j]] += k_ele[i,j]
+
+    # For efficiency, modify the type of sparse matrix now that it is assembled
+    k_global_stiffness_matrix_csr = k_global_stiffness_matrix_lil.tocsr()
 
 
 # Solution functions

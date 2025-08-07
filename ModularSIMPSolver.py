@@ -52,6 +52,7 @@ if __name__ == "__main__":
     # Main material
     E1 = 1e9
     nu1 = 0.3
+    constitutive_matrix = FEA.isotropic2D_plane_stress_constitutive_matrix(E1,nu1)
 
 
     # 5. Set the inter-loop variables
