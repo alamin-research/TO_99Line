@@ -76,66 +76,23 @@ if __name__ == "__main__":
         # Store the old design variables
         old_design_variables = np.copy(design_variables)
 
-        # Create the empty global stiffness matrix
-        k_global_stiffness_matrix_lil = scipy.sparse.lil_matrix((num_nodes*dof_per_node, num_nodes*dof_per_node))  # Creates a dof x dof zero matrix
-        
-        # Assemble the global stiffness matrix
-        for ele in range(num_ele):
-
-            # Generate the unmodified Constitutive Matrix
-            constitutive_matrix_1 = FEA.isotropic2D_plane_stress_constitutive_matrix(E1,nu1)
-            # TODO make a list of constitutive matrices and iterate through them for multiple materials
-
-            # Get the nodes for this element and their coordinates
-            ele_nodes = element_nodes[ele, :]
-            ele_node_coords = node_coordinates[ele_nodes.flatten(),:]
-
-            # get the elemental stiffness matrix
-            k_ele = FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points(ele_node_coords,constitutive_matrix_1)
-
-            # get the relevent dofs and add the elemental stiffness to the global
-            nodal_dofs = []
-            for node in ele_nodes:
-                for i in range(dof_per_node):
-                    nodal_dofs.append(node*dof_per_node+i)
-
-            # add the element stiffness to the global
-            # TODO optimize this
-            for i in range(len(nodal_dofs)):
-                for j in range(len(nodal_dofs)):
-                    k_global_stiffness_matrix_lil[nodal_dofs[i],nodal_dofs[j]] += k_ele[i,j]
-
-        # For efficiency, modify the type of sparse matrix now that it is assembled
-        k_global_stiffness_matrix_csr = k_global_stiffness_matrix_lil.tocsr()
+        k_global = FEA.global_stiffness_2d_variable_density_as_csr(element_densities=design_variables[0,:].reshape(-1,1),k_el_function=FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,element_nodes=element_nodes,node_coordinates=node_coordinates,constitutive_matrix=constitutive_matrix,penalization_exponent=3)
 
         # Solve for displacements and forces
         # forces may not be needed?
-        nodal_displacements, nodal_forces = FEA.solve_unknown_displacements_forces(k_global_stiffness_matrix_csr,fixed_dofs,free_dofs,nodal_displacements,nodal_forces)
+        nodal_displacements, nodal_forces = FEA.solve_unknown_displacements_forces(k_global,fixed_dofs,free_dofs,nodal_displacements,nodal_forces)
 
-        # Calculate the gradient for each 
+        # Calculate Objective function
+        objective_function = np.dot(np.transpose(nodal_displacements),np.dot(k_global,nodal_displacements))
+        print(f"Iteration {iteration_count}: Strain energy = {objective_function}")
 
+        # Calculate the gradient WithRespectTo each variable
+        gradient_wrt__density = FEA.strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes,nodal_displacements,node_coordinates,design_variables[0,:].reshape(-1,1),FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,constitutive_matrix,penalization_exponent=3)
 
-
+        # Update the design variables
+        design_variables[:,0] += 0.01*gradient_wrt__density
 
         
-
-        
-
-
-
-
-
-            
-
-
-            
-
-        # Solve for the displacements and forces
-
-        # Calculate Objective function and the Sensitivities
-
-        # 
-
         
         
         # Check to see if end conditions were met

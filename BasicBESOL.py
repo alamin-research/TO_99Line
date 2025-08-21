@@ -118,7 +118,7 @@ def esoL_python(nelx, nely, volfrac, er, rmin, F, fixeddofs):
         K = scipy.sparse.coo_array((sK.flatten(), (iK.flatten().astype(int), jK.flatten().astype(int))))
         K = (K+K.transpose())/2
 
-        print(K[np.ix_(freedofs, freedofs)].shape)
+        # print(K[np.ix_(freedofs, freedofs)].shape)
         U[freedofs,:] = scipy.sparse.linalg.spsolve(K[np.ix_(freedofs, freedofs)],F[freedofs,:]).reshape(-1,1)
 
         # # Test output 
@@ -130,14 +130,12 @@ def esoL_python(nelx, nely, volfrac, er, rmin, F, fixeddofs):
         c.append(dc.sum())
         
         ## Filtering/Modicication of sensitivities
-        # print(f"The shape of filtered dc is {(H @ dc.reshape(-1, 1, order='F')).shape}")
-        # print(f"The shape of Hs is {Hs.shape}")
         dc = (H @ dc.reshape(-1, 1, order='F') / Hs).reshape(nely, nelx, order='F')
         if ij > 1:
             dc = (dc + olddc)/2
 
         ## Print Results and plot densities
-        if ij >= 10:
+        if ij > 10:
             recent_5 = np.array(c[ij - 5 : ij])     # MATLAB 1-based -> Python 0-based
             prev_5 = np.array(c[ij - 10 : ij - 5])
             change = abs(prev_5.sum() - recent_5.sum()) / recent_5.sum()
@@ -161,7 +159,7 @@ def esoL_python(nelx, nely, volfrac, er, rmin, F, fixeddofs):
                 l2 = th
 
     plt.show()
-        
+
 
         
 
@@ -175,10 +173,26 @@ if __name__ == "__main__":
     # Coordinate system for calculations is y+ down, x+ right
 
     # Half-MBB Beam
-    nelx = 100
-    nely = 40
-    F_1 = np.zeros((2*(nely+1)*(nelx+1),1))
-    F_1[1,0] = -1
-    fixeddofs_1 = sorted(set(list(range(0,(2*(nely+1)),2)) + [2*(nely+1)*(nelx+1)-1])) # fixes the midplane wall in the x direction and the y=0, x=max dof in the y direction 
+    nelx1 = 100
+    nely1 = 40
+    F_1 = np.zeros((2*(nely1+1)*(nelx1+1),1))
+    F_1[1,0] = -1  # Set a downward force at the "midplane" of the whole beam so that it is simply supported
+    fixeddofs_1 = sorted(set(list(range(0,(2*(nely1+1)),2)) + [2*(nely1+1)*(nelx1+1)-1])) # fixes the midplane wall in the x direction and the y=0, x=max dof in the y direction 
 
-    esoL_python(nelx=nelx, nely=nely, volfrac=0.6, er=0.02, rmin=6, F=F_1, fixeddofs=fixeddofs_1)
+    # Cantilever
+    nelx2 = 100
+    nely2 = 50
+    F_2 = np.zeros((2*(nely2+1)*(nelx2+1),1))
+    F_2[2*(nely2+1)*(nelx2+1)-nely2-1,0] = 1 # Set a downward force halfway on the right side
+    fixeddofs_2 = list(range(0,2*(nely2+1)))  # Fix the entire left side in x and y
+
+    # Half Wheel
+    # nelx3 = 100
+    # nely3 = 60
+    # F_3 = np.zeros((2*(nely2+1)*(nelx2+1),1))
+    # F_3[2*(nely+1)*(nelx/2+1)-1,0] = -1
+    # fixeddofs_3 = sorted(set())
+
+    esoL_python(nelx=nelx1, nely=nely1, volfrac=0.6, er=0.02, rmin=6, F=F_1, fixeddofs=fixeddofs_1)
+
+    # esoL_python(nelx=nelx2, nely=nely2, volfrac=0.6, er=0.02, rmin=6, F=F_2, fixeddofs=fixeddofs_2)
