@@ -15,6 +15,7 @@ import FEA
 
 # Modular SIMP Solver
 if __name__ == "__main__":
+    print("ModSIMP attempted")
         
     # 1.  Get the nodal information using method of choice as an np array
     nelx = 100
@@ -35,8 +36,9 @@ if __name__ == "__main__":
     # Manual definition below
     dof_per_node = node_coordinates.shape[1]
     fixed_dofs = []
+    fixed_dofs = GetBoundaryConditions.add_fixed_dof_to_node_near_position_to_2D_rectangular_mesh(current_fixed=fixed_dofs, node_x_position=nelx, node_y_position=0, radius=0, node_coordinates=node_coordinates, fix_in_x=False)
     fixed_dofs = GetBoundaryConditions.add_rolling_edge_fixed_in_y_to_2D_rectangular_mesh(current_fixed=fixed_dofs, edge_x_position=0, node_coordinates=node_coordinates)            
-    fixed_dofs = GetBoundaryConditions.add_fixed_dof_to_node_near_position_to_2D_rectangular_mesh(current_fixed=fixed_dofs, node_x_position=nelx, node_y_position=0, radius=0, node_coordinates=node_coordinates, fix_in_y=False)
+    
     # Set free_dofs based on above
     free_dofs = []
     for i in range(dof_per_node*num_nodes):
@@ -46,7 +48,10 @@ if __name__ == "__main__":
     # Either load or set the displacement vector and load vector
     nodal_displacements = np.zeros((num_nodes*dof_per_node,1))
     nodal_forces = np.zeros((num_nodes*dof_per_node,1))
+    nodal_forces[1] = -100
     
+    # Plot boundary conditions
+    Plotter.plot_2D_boundary_conditions(node_coordinates=node_coordinates,fixed_dofs=fixed_dofs,forces=nodal_forces,marker_size=15)
     
     # 4. Material Properties
     # Main material
@@ -57,18 +62,20 @@ if __name__ == "__main__":
 
     # 5. Set the inter-loop variables
     # Set the end conditions for the while loop
-    end_condition_density_change = 0.001
+    end_condition_density_change = 0.00001
     #end_condition_angle_change = 0.5 * np.pi / 180 # 0.5 degree
     
     # Set a variable to control whether iterations continue and set it to change
     # within the loop when all conditions are met
     iteration_count = 0
-    max_iterations = 200
+    max_iterations = 5
     all_end_conditions_met = False
     max_iterations_met = False
 
     penalization_exponent = 3
     
+    print("Starting while loop")
+
     while (not all_end_conditions_met) and (not max_iterations_met):
         iteration_count+=1
         
@@ -76,6 +83,7 @@ if __name__ == "__main__":
         # Store the old design variables
         old_design_variables = np.copy(design_variables)
 
+        # Get the global stiffness matrix
         k_global = FEA.global_stiffness_2d_variable_density_as_csr(element_densities=design_variables[0,:].reshape(-1,1),k_el_function=FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,element_nodes=element_nodes,node_coordinates=node_coordinates,constitutive_matrix=constitutive_matrix,penalization_exponent=3)
 
         # Solve for displacements and forces
@@ -83,24 +91,27 @@ if __name__ == "__main__":
         nodal_displacements, nodal_forces = FEA.solve_unknown_displacements_forces(k_global,fixed_dofs,free_dofs,nodal_displacements,nodal_forces)
 
         # Calculate Objective function
-        objective_function = np.dot(np.transpose(nodal_displacements),np.dot(k_global,nodal_displacements))
+        objective_function = nodal_displacements.T @ (k_global.dot(nodal_displacements))
         print(f"Iteration {iteration_count}: Strain energy = {objective_function}")
 
         # Calculate the gradient WithRespectTo each variable
         gradient_wrt__density = FEA.strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes,nodal_displacements,node_coordinates,design_variables[0,:].reshape(-1,1),FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,constitutive_matrix,penalization_exponent=3)
 
         # Update the design variables
-        design_variables[:,0] += 0.01*gradient_wrt__density
+        design_variables[0,:] = design_variables[0,:] + 100*(gradient_wrt__density).reshape(1,-1)
+        design_variables[0, :] = np.clip(design_variables[0, :], 0, 1)
 
-        
-        
+        print("loop end\n\n\n")
+
         
         # Check to see if end conditions were met
         if iteration_count>=max_iterations:
             max_iterations_met = True
+            print("Max iterations met")
         if (end_condition_density_change > SIMPEndConditions.find_density_max_change(rho=design_variables[:,0], rho_old=old_design_variables[:,0])
             and 
             True):
             all_end_conditions_met = True
+            print("End condition satisfied")
         
     

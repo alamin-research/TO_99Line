@@ -25,12 +25,12 @@ def plot_2D_boundary_conditions(node_coordinates,fixed_dofs,forces=[],marker_siz
             y_fixed_x_coords.append(node_coordinates[int(dof/2)][0])
             y_fixed_y_coords.append(node_coordinates[int(dof/2)][1])
             
-    print("\n\nfixed Coords:")
-    print(fixed_dofs)
-    print(x_fixed_x_coords)
-    print(x_fixed_y_coords)
-    print(y_fixed_x_coords)
-    print(y_fixed_y_coords)
+    # print("\n\nfixed Coords:")
+    # print(fixed_dofs)
+    # print(x_fixed_x_coords)
+    # print(x_fixed_y_coords)
+    # print(y_fixed_x_coords)
+    # print(y_fixed_y_coords)
             
     # Plot the points
     plt.plot(x_coords, y_coords, 'k.', markersize=1)  
@@ -42,4 +42,5 @@ def plot_2D_boundary_conditions(node_coordinates,fixed_dofs,forces=[],marker_siz
     plt.ylabel("y")
     plt.title("Scatter Plot of Points")
     plt.grid(True)
-    plt.show()
+    plt.show(block=False)
+    plt.pause(2)

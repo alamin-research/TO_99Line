@@ -65,7 +65,7 @@ def generate_2D_unit_cell_node_grid(nelx, nely):
 ## Get Fixed Node indices
 
 def add_rolling_edge_fixed_in_y_to_2D_rectangular_mesh(current_fixed, edge_x_position, node_coordinates):
-    dofs_to_add = [2*i + 1 for i, coords in enumerate(node_coordinates) if coords[0] == edge_x_position]  # Fix the edge where x=0 in the y direction for symmetry
+    dofs_to_add = [2*i for i, coords in enumerate(node_coordinates) if coords[0] == edge_x_position]  # Fix the edge where x=0 in the y direction for symmetry
     current_fixed.extend(dofs_to_add)
     return list(set(current_fixed)) # Switch to a set to remove redundancies
 
@@ -82,6 +82,7 @@ def add_fixed_dof_to_node_near_position_to_2D_rectangular_mesh(current_fixed, no
             dofs_to_add.append(2*node)
         if fix_in_y:
             dofs_to_add.append(2*node+1)
+
             
     current_fixed.extend(dofs_to_add)
     return list(set(current_fixed)) # Switch to a set to remove redundancies

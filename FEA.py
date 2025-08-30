@@ -93,7 +93,7 @@ def solve_unknown_displacements_forces(global_k, fixed_dofs, free_dofs, displace
     k_21 = global_k[fixed_dofs,:][:,free_dofs]
     k_22 = global_k[fixed_dofs,:][:,fixed_dofs]
 
-    displacements[free_dofs,:] = scipy.sparse.linalg.spsolve(k_11, (displacements[free_dofs,:] - (k_12 @ displacements[fixed_dofs,:]))).reshape(-1,1)
+    displacements[free_dofs,:] = scipy.sparse.linalg.spsolve(k_11, (loads[free_dofs,:] - (k_12 @ displacements[fixed_dofs,:]))).reshape(-1,1)
 
     loads[fixed_dofs,:] = (k_21 @ displacements[free_dofs,:]) + (k_22 @ displacements[fixed_dofs,:])
 
