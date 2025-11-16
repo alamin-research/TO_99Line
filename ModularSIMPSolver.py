@@ -9,6 +9,7 @@ import GetBoundaryConditions
 import Plotter
 import SIMPEndConditions
 import FEA
+import UpdateDesignVariables
 
 # See both the ReadMe and the full explanation at https://github.com/alamin-research/TO_99Line
 
@@ -73,6 +74,14 @@ if __name__ == "__main__":
     max_iterations_met = False
 
     penalization_exponent = 3
+    filter_radius = 10
+    step_size = 0.1
+
+    objective_function_history = []
+    
+    # Calculate filter if necessary
+    print("starting filter calc")
+    weight_filter = UpdateDesignVariables.calc_2D_filter(element_nodes, node_coordinates, filter_radius)
     
     print("Starting while loop")
 
@@ -85,29 +94,32 @@ if __name__ == "__main__":
 
         # Get the global stiffness matrix
         k_global = FEA.global_stiffness_2d_variable_density_as_csr(element_densities=design_variables[0,:].reshape(-1,1),k_el_function=FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,element_nodes=element_nodes,node_coordinates=node_coordinates,constitutive_matrix=constitutive_matrix,penalization_exponent=3)
-
+        # print("K global found")
         # Solve for displacements and forces
         # forces may not be needed?
         nodal_displacements, nodal_forces = FEA.solve_unknown_displacements_forces(k_global,fixed_dofs,free_dofs,nodal_displacements,nodal_forces)
-
+        # print("nodal displacements and forces found")
         # Calculate Objective function
-        objective_function = nodal_displacements.T @ (k_global.dot(nodal_displacements))
-        print(f"Iteration {iteration_count}: Strain energy = {objective_function}")
+        objective_function_history.append((nodal_displacements.T @ (k_global.dot(nodal_displacements)))[0,0])
+        print(f"Iteration {iteration_count}: Strain energy = {objective_function_history[-1]}")
 
         # Calculate the gradient WithRespectTo each variable
         gradient_wrt__density = FEA.strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes,nodal_displacements,node_coordinates,design_variables[0,:].reshape(-1,1),FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,constitutive_matrix,penalization_exponent=3)
-
+        Plotter.plot_2D_weight_gradient(element_nodes,node_coordinates,fixed_dofs,gradient_in=gradient_wrt__density,iteration_num=iteration_count)
+        print(gradient_wrt__density)
+        input()
         # Update the design variables
-        design_variables[0,:] = design_variables[0,:] + 100*(gradient_wrt__density).reshape(1,-1)
-        design_variables[0, :] = np.clip(design_variables[0, :], 0, 1)
+        design_variables[0,:] = UpdateDesignVariables.simple_2D_grid_density_variable_update_with_filter(design_variables[0,:],gradient_wrt__density, step_size=step_size, volfrac=vol_frac, weight_filter=weight_filter,ele_num=num_ele)        # design_variables[0,:] = design_variables[0,:] + 100*(gradient_wrt__density).reshape(1,-1)
+        # design_variables[0, :] = np.clip(design_variables[0, :], 0, 1)
 
-        print("loop end\n\n\n")
+        # print("loop end\n\n\n")
 
         
         # Check to see if end conditions were met
         if iteration_count>=max_iterations:
             max_iterations_met = True
             print("Max iterations met")
+            print(f"final volfrac = {np.average(design_variables[0,:])}")
         if (end_condition_density_change > SIMPEndConditions.find_density_max_change(rho=design_variables[:,0], rho_old=old_design_variables[:,0])
             and 
             True):
@@ -115,3 +127,10 @@ if __name__ == "__main__":
             print("End condition satisfied")
         
     
+    plt.figure()
+    plt.title("Optimization History")
+    plt.xlabel("Iterations")
+    plt.ylabel("Strain energy")
+    plt.plot(range(len(objective_function_history)),objective_function_history)
+    plt.show(block=False)
+    plt.pause(10)
