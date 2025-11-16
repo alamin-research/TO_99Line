@@ -4,10 +4,7 @@ from matplotlib.collections import PolyCollection
 from matplotlib.colors import TwoSlopeNorm
 
 
-def plot_2D_boundary_conditions(node_coordinates,fixed_dofs,forces=[],marker_size=2):
-    
-    if forces !=[]:
-        print("Display of forces not implemented yet")
+def plot_2D_boundary_conditions(node_coordinates,fixed_dofs,forces=[],marker_size=2, max_vector_length=1):
         
     # Get the coordinates of everything to be graphed
     x_coords = [point[0] for point in node_coordinates]
@@ -33,6 +30,28 @@ def plot_2D_boundary_conditions(node_coordinates,fixed_dofs,forces=[],marker_siz
     # print(x_fixed_y_coords)
     # print(y_fixed_x_coords)
     # print(y_fixed_y_coords)
+
+    
+    scale = max_vector_length / np.max(np.abs(forces))
+    for node_id, (x, y) in enumerate(np.array(node_coordinates)):
+
+        Fx = forces[2 * node_id,0]
+        Fy = forces[2 * node_id + 1,0]
+
+        # Skip zero vectors (optional)
+        if Fx == 0 and Fy == 0:
+            continue
+        
+        # Plot arrow
+        plt.arrow(
+            x, y,              # start at node position
+            Fx * scale, Fy * scale,  # arrow direction & length
+            head_width=max_vector_length/5,          # tweak for your mesh size
+            head_length=max_vector_length/3,
+            fc='green',
+            ec='green'
+        )
+    
             
     # Plot the points
     plt.plot(x_coords, y_coords, 'k.', markersize=1)  

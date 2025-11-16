@@ -52,7 +52,7 @@ if __name__ == "__main__":
     nodal_forces[1] = -100
     
     # Plot boundary conditions
-    Plotter.plot_2D_boundary_conditions(node_coordinates=node_coordinates,fixed_dofs=fixed_dofs,forces=nodal_forces,marker_size=15)
+    Plotter.plot_2D_boundary_conditions(node_coordinates=node_coordinates,fixed_dofs=fixed_dofs,forces=nodal_forces,marker_size=3, max_vector_length=5)
     
     # 4. Material Properties
     # Main material
