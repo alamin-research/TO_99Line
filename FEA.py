@@ -123,6 +123,8 @@ def calc_q4_B_matrix(xi, eta, node_coords):
 ## Sensitivity Functions
 
 def strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes, nodal_displacements, node_coordinates, element_densities, k_ele_function, constitutive_matrix, penalization_exponent=3):
+    print("There is currently something wrong with calculating the gradient wrt density")
+    
     num_ele = element_nodes.shape[0]
     dof_per_node = 2 # because 2D
 

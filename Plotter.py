@@ -4,7 +4,7 @@ from matplotlib.collections import PolyCollection
 from matplotlib.colors import TwoSlopeNorm
 
 
-def plot_2D_boundary_conditions(node_coordinates,fixed_dofs,forces=[],marker_size=2, max_vector_length=1):
+def plot_2D_boundary_conditions(node_coordinates,fixed_dofs,forces=[],marker_size=2, max_vector_length=1, title=-1):
         
     # Get the coordinates of everything to be graphed
     x_coords = [point[0] for point in node_coordinates]
@@ -65,6 +65,41 @@ def plot_2D_boundary_conditions(node_coordinates,fixed_dofs,forces=[],marker_siz
     plt.grid(True)
     plt.show(block=False)
     plt.pause(2)
+
+def plot_2D_displacments(node_coordinates_in, displacements_in,exaggeration=1):
+
+    # abs_disp = np.abs(displacements_in) * exaggeration
+
+    # if np.any(abs_disp != 0):
+    #     min_value = np.min(abs_disp[abs_disp != 0])
+    #     max_value = np.max(abs_disp[abs_disp != 0])
+    #     print(f"After exaggeration, the min change is {min_value }")
+    #     print(f"After exaggeration, the min change is {max_value}")
+    # else:
+    #     print("displacements all 0")
+
+    # find the displaced coordinates
+    node_coordinates = np.array(node_coordinates_in)
+    displacemented_nodes = exaggeration * np.array(displacements_in).reshape(-1,2) + node_coordinates
+
+    # Get the coordinates of everything to be graphed
+    x_coords = [point[0] for point in node_coordinates]
+    y_coords = [point[1] for point in node_coordinates]
+    dx_coords = [point[0] for point in displacemented_nodes]
+    dy_coords = [point[1] for point in displacemented_nodes]
+    
+    # Plot the points
+    plt.plot(x_coords, y_coords, 'k.', markersize=3)      
+    plt.plot(dx_coords, dy_coords, 'r.', markersize=1)  
+    # Optionally, label the axes and show the plot
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.title("Plot of displacements")
+    plt.grid(True)
+    plt.show(block=False)
+    plt.pause(2)
+
+
 
 def plot_2D_weight_gradient(element_nodes, node_coordinates, fixed_dofs, gradient_in, iteration_num=-1, forces=[], marker_size=2):
 
