@@ -49,7 +49,8 @@ if __name__ == "__main__":
     # Either load or set the displacement vector and load vector
     nodal_displacements = np.zeros((num_nodes*dof_per_node,1))
     nodal_forces = np.zeros((num_nodes*dof_per_node,1))
-    nodal_forces[1] = -10000
+    nodal_forces[1] = -50
+    applied_forces = np.copy(nodal_forces)
     
     # Plot boundary conditions
     Plotter.plot_2D_boundary_conditions(node_coordinates=node_coordinates,fixed_dofs=fixed_dofs,forces=nodal_forces,marker_size=3, max_vector_length=5)
@@ -97,7 +98,7 @@ if __name__ == "__main__":
         # print("K global found")
         # Solve for displacements and forces
         # forces may not be needed?
-        nodal_displacements, nodal_forces = FEA.solve_unknown_displacements_forces(k_global,fixed_dofs,free_dofs,nodal_displacements,nodal_forces)
+        nodal_displacements, nodal_forces = FEA.solve_unknown_displacements_forces(k_global,fixed_dofs,free_dofs,nodal_displacements,applied_forces)
         # Optionally show the displacements
         Plotter.plot_2D_displacments(node_coordinates, nodal_displacements, exaggeration=10e5)
         input()

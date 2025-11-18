@@ -89,8 +89,8 @@ def plot_2D_displacments(node_coordinates_in, displacements_in,exaggeration=1):
     dy_coords = [point[1] for point in displacemented_nodes]
     
     # Plot the points
-    plt.plot(x_coords, y_coords, 'k.', markersize=3)      
-    plt.plot(dx_coords, dy_coords, 'r.', markersize=1)  
+    plt.plot(x_coords, y_coords, 'k.', markersize=6)      
+    plt.plot(dx_coords, dy_coords, 'r.', markersize=3)  
     # Optionally, label the axes and show the plot
     plt.xlabel("x")
     plt.ylabel("y")
