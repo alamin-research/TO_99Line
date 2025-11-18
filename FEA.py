@@ -36,10 +36,10 @@ def q4_element_gaussian_quadrature_isoparametric_integration_2points(node_coords
     for i in [-point, point]:
         for j in [-point, point]:
 
-            B = calc_q4_B_matrix(i,j,node_coords)
+            jacobian_det, B = calc_q4_B_matrix(i,j,node_coords)
             
             # add the integration point value to the element stiffness
-            k_el += np.dot(np.transpose(B), np.dot(constitutive_matrix,B))
+            k_el += np.dot(np.transpose(B), np.dot(constitutive_matrix,B)) * jacobian_det
 
     return k_el
 
@@ -86,6 +86,7 @@ def global_stiffness_2d_variable_density_as_csr(element_densities, k_el_function
 
 def solve_unknown_displacements_forces(global_k, fixed_dofs, free_dofs, displacements, loads):
 
+    reactions = np.zeros_like(loads)
     # Partition global_k based on fixed and free dofs
     # Notation based on Concepts and Applications of Finite Element Analysis 4th Ed by Cook et. al. pg 40
     k_11 = global_k[free_dofs,:][:,free_dofs]
@@ -95,29 +96,77 @@ def solve_unknown_displacements_forces(global_k, fixed_dofs, free_dofs, displace
 
     displacements[free_dofs,:] = scipy.sparse.linalg.spsolve(k_11, (loads[free_dofs,:] - (k_12 @ displacements[fixed_dofs,:]))).reshape(-1,1)
 
-    loads[fixed_dofs,:] = (k_21 @ displacements[free_dofs,:]) + (k_22 @ displacements[fixed_dofs,:])
+    reactions[fixed_dofs,:] = (k_21 @ displacements[free_dofs,:]) + (k_22 @ displacements[fixed_dofs,:])
 
-    return displacements, loads
+    print("Load applied at DOFs:", np.where(np.abs(loads) > 1e-12)[0])
+    print("Reaction forces at constrained DOFs:",np.where(np.abs(reactions) > 1e-12)[0])
+    print("Fixed dofs:", sorted(fixed_dofs)[:10], "...")
+    print("Free dofs:", sorted(free_dofs)[:10], "...")
+
+    return displacements, reactions
 
 
 ## Calculate B Matrix
 def calc_q4_B_matrix(xi, eta, node_coords):
+
+    # Derivation taken from Cook pg207-208, Eq 6.2-9 to 6.2-12 and compared to pg 98 eq 3.6-6
+    # x^ implies x is a vector, [A] implies A is a matrix
+    """
+    strain = B @ displacement from pg98
+
+    strain = selector @ d/dx (u^)
+    selector = [[1, 0, 0, 0],[0, 0, 0, 1], [0, 1, 1, 0]]
+    d/dx (u^) = [du/dx, du/dy, dv/dx, dv/dy]  where d is the partial
+
+    d/dx (u^) = [[[gamma],[0]]
+                 [[0],[gamma]]] @ d/dxi (u^)
+    [gamma] = Jacobian^-1
+    d/dxi (u^) = [du/dxi, du/deta, dv/dxi, dv/deta]  where d is the partial
+
+    d/dxi (u^) = [dN_full] @ d^
+    dN_full = dN_full = 0.25 * np.array([[N_1xi, 0, N_2xi, 0, N_3xi, 0, N_4xi, 0],
+                               [N_1et, 0, N_2et, 0, N_3et, 0, N_4et, 0],
+                               [0, N_1xi, 0, N_2xi, 0, N_3xi, 0, N_4xi],
+                               [0, N_1et, 0, N_2et, 0, N_3et, 0, N_4et]]) See Cook Eq 6.2-11 or below Ns are described on 6.2-3
+    """
+
     # Calculate dN as [N1, N2, N3, N4]^T * [d/d_xi, d/d_eta]
-    dN = np.array([[-(1-xi), (1-xi), (1+xi), -(1+xi)],
-                    [-(1-eta), -(1+eta), (1+eta), (1-eta)]])
+    dN = 0.25 * np.array([[-(1-eta), (1-eta), (1+eta), -(1+eta)],
+                    [-(1-xi), -(1+xi), (1+xi), (1-xi)]])
     
     # jacobian calcs
-    jacobian_matrix = 0.25 * np.dot(dN,node_coords)
+    jacobian_matrix = np.dot(dN,node_coords)
     jacobian_det = np.linalg.det(jacobian_matrix)
     jacobian_inverse = np.linalg.inv(jacobian_matrix)
 
     # intermediate calc to find B matrix
     sub_B = np.dot(jacobian_inverse,dN)
 
-    # Return B
-    return np.array([[sub_B[0,0],0,sub_B[0,1], 0, sub_B[0,2], 0, sub_B[0,3], 0],
+    # Testing difference in derivation
+    B_old = np.array([[sub_B[0,0],0,sub_B[0,1], 0, sub_B[0,2], 0, sub_B[0,3], 0],
                     [0, sub_B[1,0],0,sub_B[1,1], 0, sub_B[1,2], 0, sub_B[1,3]],
                     [sub_B[1,0],sub_B[0,0],sub_B[1,1], sub_B[0,1], sub_B[1,2], sub_B[0,2], sub_B[1,3], sub_B[0,3]]])
+    
+    # Below was used to fix the issue with dN having eta and xi flipped
+    # selector = np.array([[1, 0, 0, 0],[0, 0, 0, 1], [0, 1, 1, 0]])
+    # gamma2 = scipy.linalg.block_diag(jacobian_inverse,jacobian_inverse)
+    # dN_full = 0.25 * np.array([[-(1-eta), 0, (1-eta), 0, (1+eta), 0, -(1+eta), 0],
+    #                            [-(1-xi), 0, -(1+xi), 0, (1+xi), 0, (1-xi), 0],
+    #                            [0, -(1-eta), 0, (1-eta), 0, (1+eta), 0, -(1+eta)],
+    #                            [0, -(1-xi), 0, -(1+xi), 0, (1+xi), 0, (1-xi)]])
+    
+    # B_new = selector @ gamma2 @ dN_full
+
+    # difference = B_old-B_new
+
+    # if np.any(difference) != 0:
+    #     print(f"B_old is:\n{B_old}\nB_new is:\n{B_new}\nThe difference is:\n{difference}")
+    #     input()
+
+
+
+    # Return B
+    return jacobian_det, B_old
 
 
 ## Sensitivity Functions
