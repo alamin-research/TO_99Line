@@ -97,7 +97,7 @@ def simple_2D_grid_density_variable_update_with_filter(densities, gradient, step
     """
     # Adjust the densities
     l1 = 0 
-    l2 = 100000
+    l2 = 1e15
 
     # Guarantee that the while loop runs at least once
     while True:
@@ -114,8 +114,10 @@ def simple_2D_grid_density_variable_update_with_filter(densities, gradient, step
         else:
             l2 = lmid
 
-        if abs(np.sum(xnew)/(ele_num) -volfrac) > 1e-8:
+        if abs(np.sum(xnew)/(ele_num) -volfrac) < 1e-8:
             # Exit the while loop after it has run at least once
+            # print(f"lmid = {lmid}")
+            # print(f"Break value: {abs(np.sum(xnew)/(ele_num) -volfrac)}")
             break
     
     

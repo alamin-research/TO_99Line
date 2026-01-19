@@ -18,12 +18,17 @@ import UpdateDesignVariables
 if __name__ == "__main__":
     print("ModSIMP attempted")
         
-    # 1.  Get the nodal information using method of choice as an np array
+    # 1.  Get the nodal information using method of choice as an np array 
+    # where element_nodes has rows for each element, and nodes in each column such that they go counter clockwise left to right
+    # and node_coordinates has rows for each node and x,y(,z) for the columns
     nelx = 100
     nely = 50
     element_nodes, node_coordinates = GetBoundaryConditions.generate_2D_unit_cell_node_grid(nelx=nelx, nely=nely)
     num_ele = element_nodes.shape[0]
     num_nodes = node_coordinates.shape[0]
+    # # Test printing values
+    # print(f"Element nodes:\n{element_nodes}")
+    # print(f"Node Coordinates:\n{node_coordinates}")
     
     # 2.  Define the design variables as a numpy array of columns where each row
     # is a variable and the column relates to the the element
@@ -31,7 +36,7 @@ if __name__ == "__main__":
     design_variables = np.ones((design_variables_per_element,num_ele))
     # Set the initial values for each design variable
     vol_frac = 0.5
-    design_variables[:,0] = vol_frac  # Set the Inital Volume fraction
+    design_variables[0,:] = vol_frac  # Set the Inital Volume fraction
     
     # 3. Set Boundary Conditions
     # Manual definition below
@@ -49,11 +54,12 @@ if __name__ == "__main__":
     # Either load or set the displacement vector and load vector
     nodal_displacements = np.zeros((num_nodes*dof_per_node,1))
     nodal_forces = np.zeros((num_nodes*dof_per_node,1))
-    nodal_forces[1] = -50
+    nodal_forces[1] = 50
+    #nodal_forces[2*(nelx+1)*(nely+1)-2] = 5
     applied_forces = np.copy(nodal_forces)
     
     # Plot boundary conditions
-    Plotter.plot_2D_boundary_conditions(node_coordinates=node_coordinates,fixed_dofs=fixed_dofs,forces=nodal_forces,marker_size=3, max_vector_length=5)
+    Plotter.plot_2D_boundary_conditions(node_coordinates=node_coordinates,fixed_dofs=fixed_dofs,forces=nodal_forces,marker_size=5, max_vector_length=1)
     
     # 4. Material Properties
     # Main material
@@ -64,13 +70,13 @@ if __name__ == "__main__":
 
     # 5. Set the inter-loop variables
     # Set the end conditions for the while loop
-    end_condition_density_change = 0.00001
+    end_condition_density_change = 1e-8
     #end_condition_angle_change = 0.5 * np.pi / 180 # 0.5 degree
     
     # Set a variable to control whether iterations continue and set it to change
     # within the loop when all conditions are met
     iteration_count = 0
-    max_iterations = 5
+    max_iterations = 100
     all_end_conditions_met = False
     max_iterations_met = False
 
@@ -89,19 +95,25 @@ if __name__ == "__main__":
     while (not all_end_conditions_met) and (not max_iterations_met):
         iteration_count+=1
         
-        
         # Store the old design variables
         old_design_variables = np.copy(design_variables)
+
+        #print(f"Design variables are: {old_design_variables}")
 
         # Get the global stiffness matrix
         k_global = FEA.global_stiffness_2d_variable_density_as_csr(element_densities=design_variables[0,:].reshape(-1,1),k_el_function=FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,element_nodes=element_nodes,node_coordinates=node_coordinates,constitutive_matrix=constitutive_matrix,penalization_exponent=3)
         # print("K global found")
+
+        # Check values
+        #Plotter.plot_global_stiffness_sensitivities(k_global, node_coordinates, scale=10)
+        #print(k_global.toarray())
+        #print(f"Symmetry Check: {k_global.toarray() - k_global.T.toarray()}")
+
         # Solve for displacements and forces
         # forces may not be needed?
         nodal_displacements, nodal_forces = FEA.solve_unknown_displacements_forces(k_global,fixed_dofs,free_dofs,nodal_displacements,applied_forces)
         # Optionally show the displacements
-        Plotter.plot_2D_displacments(node_coordinates, nodal_displacements, exaggeration=10e5)
-        input()
+        #Plotter.plot_2D_displacments(node_coordinates, nodal_displacements, exaggeration=10e5)
 
         # Calculate Objective function
         objective_function_history.append((nodal_displacements.T @ (k_global.dot(nodal_displacements)))[0,0])
@@ -109,27 +121,30 @@ if __name__ == "__main__":
 
         # Calculate the gradient WithRespectTo each variable
         gradient_wrt__density = FEA.strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes,nodal_displacements,node_coordinates,design_variables[0,:].reshape(-1,1),FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,constitutive_matrix,penalization_exponent=3)
-        Plotter.plot_2D_weight_gradient(element_nodes,node_coordinates,fixed_dofs,gradient_in=gradient_wrt__density,iteration_num=iteration_count)
-        print(gradient_wrt__density)
-        input()
+        #Plotter.plot_2D_weight_gradient(element_nodes,node_coordinates,fixed_dofs,gradient_in=gradient_wrt__density,iteration_num=iteration_count)
+        #print(gradient_wrt__density)
+        
         # Update the design variables
         design_variables[0,:] = UpdateDesignVariables.simple_2D_grid_density_variable_update_with_filter(design_variables[0,:],gradient_wrt__density, step_size=step_size, volfrac=vol_frac, weight_filter=weight_filter,ele_num=num_ele)        # design_variables[0,:] = design_variables[0,:] + 100*(gradient_wrt__density).reshape(1,-1)
         # design_variables[0, :] = np.clip(design_variables[0, :], 0, 1)
 
         # print("loop end\n\n\n")
+        
+        Plotter.plot_2D_mesh_densities(element_nodes, node_coordinates, design_variables[0,:], iteration_count)
 
         
         # Check to see if end conditions were met
-        if iteration_count>=max_iterations:
+        if iteration_count>=max_iterations and not max_iterations_met:
             max_iterations_met = True
             print("Max iterations met")
-            print(f"final volfrac = {np.average(design_variables[0,:])}")
+            #print(f"final volfrac = {np.average(design_variables[0,:])}")
         if (end_condition_density_change > SIMPEndConditions.find_density_max_change(rho=design_variables[:,0], rho_old=old_design_variables[:,0])
             and 
             True):
             all_end_conditions_met = True
             print("End condition satisfied")
         
+    print(f"final volfrac = {np.average(design_variables[0,:])}")
     
     plt.figure()
     plt.title("Optimization History")

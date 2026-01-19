@@ -37,9 +37,17 @@ def q4_element_gaussian_quadrature_isoparametric_integration_2points(node_coords
         for j in [-point, point]:
 
             jacobian_det, B = calc_q4_B_matrix(i,j,node_coords)
+
+            if jacobian_det <= 0:
+                print("NEGATIVE OR ZERO JACOBIAN!")
+            # else:
+            #     print(f"det_j at ({i},{j}): {jacobian_det}")
             
             # add the integration point value to the element stiffness
             k_el += np.dot(np.transpose(B), np.dot(constitutive_matrix,B)) * jacobian_det
+
+    # print(f"k_el =\n{k_el}")
+    # input()  # This is correct up until this point
 
     return k_el
 
@@ -70,12 +78,18 @@ def global_stiffness_2d_variable_density_as_csr(element_densities, k_el_function
             for i in range(dof_per_node):
                 nodal_dofs.append(node*dof_per_node+i)
 
+
+        # Test values to check assignment
+        #print(f"Nodal dofs are:\n{nodal_dofs}")
+
+        
         # add the element stiffness to the global
-        # TODO optimize this
+        # TODO optimize this        
         for i in range(len(nodal_dofs)):
             for j in range(len(nodal_dofs)):
                 k_global_stiffness_matrix_lil[nodal_dofs[i],nodal_dofs[j]] += k_ele[i,j]
 
+                
     # For efficiency, modify the type of sparse matrix now that it is assembled
     k_global_stiffness_matrix_csr = k_global_stiffness_matrix_lil.tocsr()
 
@@ -98,10 +112,10 @@ def solve_unknown_displacements_forces(global_k, fixed_dofs, free_dofs, displace
 
     reactions[fixed_dofs,:] = (k_21 @ displacements[free_dofs,:]) + (k_22 @ displacements[fixed_dofs,:])
 
-    print("Load applied at DOFs:", np.where(np.abs(loads) > 1e-12)[0])
-    print("Reaction forces at constrained DOFs:",np.where(np.abs(reactions) > 1e-12)[0])
-    print("Fixed dofs:", sorted(fixed_dofs)[:10], "...")
-    print("Free dofs:", sorted(free_dofs)[:10], "...")
+    # print("Load applied at DOFs:", np.where(np.abs(loads) > 1e-12)[0])
+    # print("Reaction forces at constrained DOFs:",np.where(np.abs(reactions) > 1e-12)[0])
+    # print("Fixed dofs:", sorted(fixed_dofs)[:10], "...")
+    # print("Free dofs:", sorted(free_dofs)[:10], "...")
 
     return displacements, reactions
 
@@ -172,7 +186,7 @@ def calc_q4_B_matrix(xi, eta, node_coords):
 ## Sensitivity Functions
 
 def strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes, nodal_displacements, node_coordinates, element_densities, k_ele_function, constitutive_matrix, penalization_exponent=3):
-    print("There is currently something wrong with calculating the gradient wrt density")
+    #print("There is currently something wrong with calculating the gradient wrt density")
     
     num_ele = element_nodes.shape[0]
     dof_per_node = 2 # because 2D
