@@ -32,11 +32,10 @@ if __name__ == "__main__":
     
     # 2.  Define the design variables as a numpy array of columns where each row
     # is a variable and the column relates to the the element
-    design_variables_per_element = 1
-    design_variables = np.ones((design_variables_per_element,num_ele))
+    element_densities = np.ones((num_ele,1))
     # Set the initial values for each design variable
     vol_frac = 0.5
-    design_variables[0,:] = vol_frac  # Set the Inital Volume fraction
+    element_densities[:,:] = vol_frac  # Set the Inital Volume fraction
     
     # 3. Set Boundary Conditions
     # Manual definition below
@@ -59,7 +58,7 @@ if __name__ == "__main__":
     applied_forces = np.copy(nodal_forces)
     
     # Plot boundary conditions
-    Plotter.plot_2D_boundary_conditions(node_coordinates=node_coordinates,fixed_dofs=fixed_dofs,forces=nodal_forces,marker_size=5, max_vector_length=1)
+    #Plotter.plot_2D_boundary_conditions(node_coordinates=node_coordinates,fixed_dofs=fixed_dofs,forces=nodal_forces,marker_size=5, max_vector_length=1)
     
     # 4. Material Properties
     # Main material
@@ -82,7 +81,7 @@ if __name__ == "__main__":
 
     penalization_exponent = 3
     filter_radius = 10
-    step_size = 0.1
+    step_size = 0.01
 
     objective_function_history = []
     
@@ -96,12 +95,12 @@ if __name__ == "__main__":
         iteration_count+=1
         
         # Store the old design variables
-        old_design_variables = np.copy(design_variables)
+        old_element_densities = np.copy(element_densities)
 
         #print(f"Design variables are: {old_design_variables}")
 
         # Get the global stiffness matrix
-        k_global = FEA.global_stiffness_2d_variable_density_as_csr(element_densities=design_variables[0,:].reshape(-1,1),k_el_function=FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,element_nodes=element_nodes,node_coordinates=node_coordinates,constitutive_matrix=constitutive_matrix,penalization_exponent=3)
+        k_global = FEA.global_stiffness_2d_variable_density_as_csr(element_densities=element_densities,k_el_function=FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,element_nodes=element_nodes,node_coordinates=node_coordinates,constitutive_matrix=constitutive_matrix,penalization_exponent=3)
         # print("K global found")
 
         # Check values
@@ -120,31 +119,31 @@ if __name__ == "__main__":
         print(f"Iteration {iteration_count}: Strain energy = {objective_function_history[-1]}")
 
         # Calculate the gradient WithRespectTo each variable
-        gradient_wrt__density = FEA.strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes,nodal_displacements,node_coordinates,design_variables[0,:].reshape(-1,1),FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,constitutive_matrix,penalization_exponent=3)
+        gradient_wrt__density = FEA.strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes,nodal_displacements,node_coordinates,element_densities,FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,constitutive_matrix,penalization_exponent=3)
         #Plotter.plot_2D_weight_gradient(element_nodes,node_coordinates,fixed_dofs,gradient_in=gradient_wrt__density,iteration_num=iteration_count)
         #print(gradient_wrt__density)
         
         # Update the design variables
-        design_variables[0,:] = UpdateDesignVariables.simple_2D_grid_density_variable_update_with_filter(design_variables[0,:],gradient_wrt__density, step_size=step_size, volfrac=vol_frac, weight_filter=weight_filter,ele_num=num_ele)        # design_variables[0,:] = design_variables[0,:] + 100*(gradient_wrt__density).reshape(1,-1)
-        # design_variables[0, :] = np.clip(design_variables[0, :], 0, 1)
+        element_densities = UpdateDesignVariables.simple_2D_grid_density_variable_update_with_filter(element_densities,gradient_wrt__density, step_size=step_size, volfrac=vol_frac, weight_filter=weight_filter,ele_num=num_ele)        # design_variables[0,:] = design_variables[0,:] + 100*(gradient_wrt__density).reshape(1,-1)
+        # element_densities = np.clip(element_densities, 0, 1)
 
         # print("loop end\n\n\n")
         
-        Plotter.plot_2D_mesh_densities(element_nodes, node_coordinates, design_variables[0,:], iteration_count)
+        Plotter.plot_2D_mesh_densities(element_nodes, node_coordinates, element_densities, iteration_count)
 
         
         # Check to see if end conditions were met
         if iteration_count>=max_iterations and not max_iterations_met:
             max_iterations_met = True
             print("Max iterations met")
-            #print(f"final volfrac = {np.average(design_variables[0,:])}")
-        if (end_condition_density_change > SIMPEndConditions.find_density_max_change(rho=design_variables[:,0], rho_old=old_design_variables[:,0])
+            #print(f"final volfrac = {np.average(element_densities)}")
+        if (end_condition_density_change > SIMPEndConditions.find_density_max_change(rho=element_densities, rho_old=old_element_densities)
             and 
             True):
             all_end_conditions_met = True
             print("End condition satisfied")
         
-    print(f"final volfrac = {np.average(design_variables[0,:])}")
+    print(f"final volfrac = {np.average(element_densities)}")
     
     plt.figure()
     plt.title("Optimization History")

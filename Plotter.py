@@ -109,6 +109,7 @@ def plot_2D_mesh_densities(element_nodes, node_coordinates, densities, iteration
 
     global _fig, _ax, _collection, _colorbar
 
+    densities = densities.flatten()
     # Build polygon list once per call (cheap)
     polys = []
     for elem in element_nodes:

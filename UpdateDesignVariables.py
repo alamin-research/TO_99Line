@@ -66,7 +66,7 @@ def simple_2D_grid_density_variable_update_with_filter(densities, gradient, step
     # Filter the gradient
 
     filtered_gradient = weight_filter @ gradient
-    
+
     """Template
     # Scale the weights according the the current weights and gradient so the volfrace is reached
     l1 = 0 
@@ -104,7 +104,7 @@ def simple_2D_grid_density_variable_update_with_filter(densities, gradient, step
         lmid = (l2+l1)/2 
         
         # Splitting up xnew for readability and trouble shooting
-        xnew1 = np.minimum(densities+step_size, densities * (filtered_gradient.flatten()*(1/lmid)**0.5))
+        xnew1 = np.minimum(densities+step_size, densities * (filtered_gradient*(1/lmid)**0.5))
         xnew2 = np.minimum(1,xnew1)
         xnew3 = np.maximum(densities-step_size,xnew2)
         xnew = np.maximum(0.000000001,xnew3)
