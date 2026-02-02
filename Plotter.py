@@ -151,11 +151,14 @@ def plot_2D_mesh_densities(element_nodes, node_coordinates, densities, iteration
     # Subsequent calls: update only density values
     else:
         _collection.set_array(densities)
+        _ax.set_title(f"Topology Density Field. Iteration {iteration_count}")
 
     # Refresh canvas without blocking
     _fig.canvas.draw_idle()
     _fig.canvas.flush_events()
     plt.pause(0.001)
+
+    return _fig
 
 
 
