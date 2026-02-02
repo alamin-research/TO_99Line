@@ -23,33 +23,22 @@ def isotropic2D_plane_strain_constitutive_matrix(E,nu):
 
 ## Integration Methods
 
-def q4_element_gaussian_quadrature_isoparametric_integration_2points(node_coords, constitutive_matrix, thickness=1):
+def q4_element_gaussian_quadrature_isoparametric_integration_2points(node_coords, constitutive_matrix, dN_cache, thickness=1):
     
     # Taken from Concepts and Applications of Finite Element Analysis 4th Ed by Cook et. al.
 
     # Initialize the stiffness matrix for this element
-    k_el = np.zeros((8,8))
+    k_el_new = np.zeros((8,8))
 
     # Perform the integration at all 4 points
-    point = 1/(3**0.5)
-
-    for i in [-point, point]:
-        for j in [-point, point]:
-
-            jacobian_det, B = calc_q4_B_matrix(i,j,node_coords)
-
-            if jacobian_det <= 0:
+    for gauss_point in dN_cache:
+        jacobian_det_new, B_new = calc_q4_B_matrix_new(gauss_point,node_coords)
+        if jacobian_det_new <= 0:
                 print("NEGATIVE OR ZERO JACOBIAN!")
-            # else:
-            #     print(f"det_j at ({i},{j}): {jacobian_det}")
-            
-            # add the integration point value to the element stiffness
-            k_el += np.dot(np.transpose(B), np.dot(constitutive_matrix,B)) * jacobian_det
 
-    # print(f"k_el =\n{k_el}")
-    # input()  # This is correct up until this point
+        k_el_new += np.dot(np.transpose(B_new), np.dot(constitutive_matrix,B_new)) * jacobian_det_new
 
-    return k_el
+    return k_el_new
 
 ## Global Stiffness Functions
 
@@ -94,7 +83,7 @@ def global_stiffness_2d_variable_density_as_csr_old(element_densities, k_el_func
     
     return k_global_stiffness_matrix_csr
 
-def global_stiffness_2d_variable_density_as_csr(element_densities, k_el_function,element_nodes, node_coordinates, constitutive_matrix, penalization_exponent=3):
+def global_stiffness_2d_variable_density_as_csr(element_densities, k_el_function,element_nodes, node_coordinates, constitutive_matrix, dN_cache, penalization_exponent=3):
     
     num_nodes = node_coordinates.shape[0]
     num_ele = element_nodes.shape[0]
@@ -118,7 +107,7 @@ def global_stiffness_2d_variable_density_as_csr(element_densities, k_el_function
         ele_node_coords = node_coordinates[ele_nodes.flatten(),:]
 
         # get the elemental stiffness matrix
-        k_ele = (k_el_function(ele_node_coords,constitutive_matrix)) * (element_densities[ele] ** penalization_exponent)
+        k_ele = (k_el_function(ele_node_coords,constitutive_matrix,dN_cache)) * (element_densities[ele] ** penalization_exponent)
 
         # get the relevent dofs and add the elemental stiffness to the global
         nodal_dofs = element_dofs[ele]
@@ -172,6 +161,63 @@ def solve_unknown_displacements_forces(global_k, fixed_dofs, free_dofs, displace
 
     return displacements, reactions
 
+def get_dN_cache():
+    gauss = 1.0 / np.sqrt(3)
+
+    gauss_points = [
+        (-gauss, -gauss),
+        ( gauss, -gauss),
+        ( gauss,  gauss),
+        (-gauss,  gauss)
+    ]
+
+    dN_cache = []
+
+    for xi, eta in gauss_points:
+
+        dN = 0.25 * np.array([
+            [-(1-eta),  (1-eta),  (1+eta), -(1+eta)],
+            [-(1-xi),  -(1+xi),   (1+xi),   (1-xi)]
+        ])
+
+        dN_cache.append(dN)
+    return dN_cache
+
+def calc_q4_B_matrix_new(dN, node_coords):
+    """
+    dN: precomputed shape derivative matrix (2x4)
+    node_coords: (4x2)
+    """
+
+    # Jacobian J = dN @ coords
+    J = dN @ node_coords
+
+    a = J[0,0]
+    b = J[0,1]
+    c = J[1,0]
+    d = J[1,1]
+
+    detJ = a*d - b*c
+
+    inv_det = 1.0 / detJ
+
+    # Explicit inverse
+    invJ = np.array([[ d, -b],
+                     [-c,  a]]) * inv_det
+
+    # sub_B = invJ @ dN
+    sub_B = invJ @ dN
+
+    # Preallocate B (faster than np.array construction)
+    B = np.zeros((3, 8))
+
+    B[0, 0::2] = sub_B[0]
+    B[1, 1::2] = sub_B[1]
+
+    B[2, 0::2] = sub_B[1]
+    B[2, 1::2] = sub_B[0]
+
+    return detJ, B
 
 ## Calculate B Matrix
 def calc_q4_B_matrix(xi, eta, node_coords):
@@ -221,7 +267,7 @@ def calc_q4_B_matrix(xi, eta, node_coords):
 
 ## Sensitivity Functions
 
-def strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes, nodal_displacements, node_coordinates, element_densities, k_ele_function, constitutive_matrix, penalization_exponent=3):
+def strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes, nodal_displacements, node_coordinates, element_densities, k_ele_function, constitutive_matrix, dN_cache,penalization_exponent=3):
     #print("There is currently something wrong with calculating the gradient wrt density")
     
     num_ele = element_nodes.shape[0]
@@ -238,7 +284,7 @@ def strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes, noda
         ele_node_coords = node_coordinates[ele_nodes.flatten(),:]
 
         # get the elemental stiffness matrix
-        k_ele = (k_ele_function(ele_node_coords,constitutive_matrix)) * (element_densities[ele] ** penalization_exponent)
+        k_ele = (k_ele_function(ele_node_coords,constitutive_matrix,dN_cache)) * (element_densities[ele] ** penalization_exponent)
 
         # get the relevent dofs and add the elemental stiffness to the global
         nodal_dofs = []

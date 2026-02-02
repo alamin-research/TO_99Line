@@ -29,6 +29,9 @@ def ModSIMPSolver():
     element_nodes, node_coordinates = GetBoundaryConditions.generate_2D_unit_cell_node_grid(nelx=nelx, nely=nely)
     num_ele = element_nodes.shape[0]
     num_nodes = node_coordinates.shape[0]
+    # precalc the isoparametric shape function derivatives for later use
+    dN_cache = FEA.get_dN_cache()
+
     # # Test printing values
     # print(f"Element nodes:\n{element_nodes}")
     # print(f"Node Coordinates:\n{node_coordinates}")
@@ -108,7 +111,7 @@ def ModSIMPSolver():
 
         # Get the global stiffness matrix
         #k_calc_start_time = time.time()
-        k_global = FEA.global_stiffness_2d_variable_density_as_csr(element_densities=element_densities,k_el_function=FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,element_nodes=element_nodes,node_coordinates=node_coordinates,constitutive_matrix=constitutive_matrix,penalization_exponent=3)
+        k_global = FEA.global_stiffness_2d_variable_density_as_csr(element_densities=element_densities,k_el_function=FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,element_nodes=element_nodes,node_coordinates=node_coordinates,constitutive_matrix=constitutive_matrix,dN_cache=dN_cache,penalization_exponent=3)
         #k_calc_time = time.time() - k_calc_start_time
         # print("K global found")
 
@@ -130,7 +133,7 @@ def ModSIMPSolver():
 
         # Calculate the gradient WithRespectTo each variable
         #find_density_gradient_start_time = time.time()
-        gradient_wrt__density = FEA.strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes,nodal_displacements,node_coordinates,element_densities,FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,constitutive_matrix,penalization_exponent=3)
+        gradient_wrt__density = FEA.strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes,nodal_displacements,node_coordinates,element_densities,FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points,constitutive_matrix,dN_cache=dN_cache,penalization_exponent=3)
         #find_density_gradient_time = time.time() - find_density_gradient_start_time
         #Plotter.plot_2D_weight_gradient(element_nodes,node_coordinates,fixed_dofs,gradient_in=gradient_wrt__density,iteration_num=iteration_count)
         #print(gradient_wrt__density)
