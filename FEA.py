@@ -40,6 +40,23 @@ def q4_element_gaussian_quadrature_isoparametric_integration_2points(node_coords
 
     return k_el_new
 
+def q4_element_gaussian_quadrature_isoparametric_integration_2points_full_cache(j_det_cache, B_cache, constitutive_matrix, dN_cache, thickness=1):
+    
+    # Taken from Concepts and Applications of Finite Element Analysis 4th Ed by Cook et. al.
+
+    # Initialize the stiffness matrix for this element
+    k_el_new = np.zeros((8,8))
+
+    # print(f"shape of j_det: {j_det.shape}")
+    # print(f"shape of B: {B.shape}")
+
+    # Perform the integration at all 4 points
+    for i, gauss_point in enumerate(dN_cache):
+
+        k_el_new += (B_cache[i].T @ constitutive_matrix @ B_cache[i]) * j_det_cache[i]
+
+    return k_el_new
+
 ## Global Stiffness Functions
 
 def global_stiffness_2d_variable_density_as_csr_old(element_densities, k_el_function,element_nodes, node_coordinates, constitutive_matrix, penalization_exponent=3):
@@ -137,6 +154,71 @@ def global_stiffness_2d_variable_density_as_csr(element_densities, k_el_function
 
     return k_global_stiffness_matrix_csr
 
+def precache_2d_static_mesh_variables(dof_per_node, dN_cache, node_coordinates, element_nodes):
+
+    
+    num_nodes = node_coordinates.shape[0]
+    num_ele = element_nodes.shape[0]
+    ndof = num_nodes * dof_per_node
+
+    num_gauss_points = 4
+    j_det_cache = np.zeros((num_ele,num_gauss_points))
+    B_cache = np.zeros((num_ele,num_gauss_points,3,8))
+
+    # Precompute DOF mapping for ALL elements (big speedup)
+    element_dofs = element_nodes[:, :, None] * dof_per_node + np.arange(dof_per_node)
+    nodal_dofs_cache = element_dofs.reshape(num_ele, -1)
+
+    for ele in range(num_ele):
+        # Get the nodes for this element and their coordinates
+        ele_nodes = element_nodes[ele, :]
+        ele_node_coords = node_coordinates[ele_nodes.flatten(),:]
+        for i, gauss_point in enumerate(dN_cache):
+            j_det_cache[ele,i], B_cache[ele,i,:,:] = calc_q4_B_matrix_new(gauss_point,ele_node_coords)
+
+    return nodal_dofs_cache, j_det_cache, B_cache
+
+def global_stiffness_2d_variable_density_as_csr_cached(nodal_dofs_cache, ndof, num_ele, element_densities, k_el_function, constitutive_matrix, j_det_cache, B_cache, dN_cache, penalization_exponent=3):
+    
+    # Preallocate triplet storage (Python lists grow amortized O(1))
+    rows = []
+    cols = []
+    vals = []
+
+
+    # Assemble the global stiffness matrix
+    for ele in range(num_ele):
+
+        # get the elemental stiffness matrix
+        k_ele = (k_el_function(j_det_cache[ele], B_cache[ele],constitutive_matrix,dN_cache)) * (element_densities[ele] ** penalization_exponent)
+
+        # get the relevent dofs and add the elemental stiffness to the global
+        nodal_dofs = nodal_dofs_cache[ele]
+
+
+        # Test values to check assignment
+        #print(f"Nodal dofs are:\n{nodal_dofs}")
+
+        
+        # Generate index pairs
+        I, J = np.meshgrid(nodal_dofs, nodal_dofs, indexing="ij")
+
+        # Append flattened blocks
+        rows.append(I.ravel())
+        cols.append(J.ravel())
+        vals.append(k_ele.ravel())
+
+    # Final sparse matrix assembly (single pass)
+    rows = np.concatenate(rows)
+    cols = np.concatenate(cols)
+    vals = np.concatenate(vals)
+
+    k_global_stiffness_matrix_csr = scipy.sparse.coo_matrix(
+        (vals, (rows, cols)),
+        shape=(ndof, ndof)
+    ).tocsr()
+
+    return k_global_stiffness_matrix_csr
 
 # Solution functions
 
@@ -298,6 +380,36 @@ def strain_energy_gradient_with_respect_to_2D_q4_ele_density(element_nodes, noda
 
     return gradient_wrt_density
 
+def strain_energy_gradient_with_respect_to_2D_q4_ele_density_full_cache(node_coordinates, nodal_displacements, element_nodes, element_densities, k_el_function, constitutive_matrix,j_det_cache, B_cache, dN_cache,penalization_exponent=3):
+    #print("There is currently something wrong with calculating the gradient wrt density")
+    
+    num_ele = element_nodes.shape[0]
+    dof_per_node = 2 # because 2D
+
+    # initialize gradient WithRespectTo
+    gradient_wrt_density = np.zeros((num_ele,1))
+
+    # Go through and calculate the gradient at each element
+    for ele in range(num_ele):
+
+        # Get the nodes for this element and their coordinates
+        ele_nodes = element_nodes[ele, :]
+        ele_node_coords = node_coordinates[ele_nodes.flatten(),:]
+
+        # get the elemental stiffness matrix
+        k_ele = (k_el_function(j_det_cache[ele], B_cache[ele],constitutive_matrix,dN_cache)) * (element_densities[ele] ** penalization_exponent)
+
+        # get the relevent dofs and add the elemental stiffness to the global
+        nodal_dofs = []
+        for node in ele_nodes:
+            for i in range(dof_per_node):
+                nodal_dofs.append(node*dof_per_node+i)
+
+        this_ele_displacements = nodal_displacements[nodal_dofs]
+
+        gradient_wrt_density[ele] = -penalization_exponent * (element_densities[ele] ** penalization_exponent-1) * np.dot(np.transpose(this_ele_displacements), np.dot(k_ele, this_ele_displacements))
+
+    return gradient_wrt_density
 
 
 # Testing
