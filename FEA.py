@@ -21,6 +21,36 @@ def isotropic2D_plane_strain_constitutive_matrix(E,nu):
                                                [0, 0, (1-2*nu)/2]])
     return E_matrix
 
+def orthotropic2D_plane_stress_constitutive_matrix(E1,E2,G12,nu12):
+    nu21=nu12*E2/E1
+    E_matrix = 1/(1-nu12*nu21) * np.array([[E1, nu12*E2, 0],
+                                      [nu12*E2, E2, 0],
+                                      [0, 0, G12*(1-nu12*nu21)]])
+    return E_matrix
+
+def rotate_2d_constitutive_matrix(unrotated_matrix, theta):
+    c = np.cos(theta)
+    s = np.sin(theta)
+
+    T_theta = np.array([[c**2, s**2, -2*c*s],
+                        [s**2, c**2, 2*c*s],
+                        [c*s, -c*s, c**2-s**2]])
+    
+    return T_theta @ unrotated_matrix @ (T_theta.T)
+
+def get_2d_dr_dtheta(unrotated_matrix, theta):
+    c = np.cos(theta)
+    s = np.sin(theta)
+
+    T_theta = np.array([[c**2, s**2, -2*c*s],
+                        [s**2, c**2, 2*c*s],
+                        [c*s, -c*s, c**2-s**2]])
+    
+    dt_dtheta = np.array([[-2*c*s, 2*c*s, -2*(c**2-s**2)],
+                        [2*c*s, -2*c*s, 2*(c**2-s**2)],
+                        [(c**2-s**2), -(c**2-s**2), -4*c*s]])  # See schmidt paper 19
+
+    return (dt_dtheta @ unrotated_matrix @ T_theta.T + T_theta @ unrotated_matrix @ dt_dtheta.T)
 ## Integration Methods
 
 def q4_element_gaussian_quadrature_isoparametric_integration_2points(node_coords, constitutive_matrix, dN_cache, thickness=1):
@@ -152,7 +182,7 @@ def global_stiffness_2d_variable_density_as_csr(element_densities, k_el_function
         shape=(ndof, ndof)
     ).tocsr()
 
-    return k_global_stiffness_matrix_csr
+    return k_global_stiffness_matrix_csr     
 
 def precache_2d_static_mesh_variables(dof_per_node, dN_cache, node_coordinates, element_nodes):
 
@@ -220,6 +250,50 @@ def global_stiffness_2d_variable_density_as_csr_cached(nodal_dofs_cache, ndof, n
 
     return k_global_stiffness_matrix_csr
 
+def global_stiffness_2d_variable_density_theta_as_csr_cached(nodal_dofs_cache, ndof, num_ele, element_densities, element_theta_orientations, k_el_function, constitutive_matrix, j_det_cache, B_cache, dN_cache, penalization_exponent=3):
+    
+    # Preallocate triplet storage (Python lists grow amortized O(1))
+    rows = []
+    cols = []
+    vals = []
+
+
+    # Assemble the global stiffness matrix
+    for ele in range(num_ele):
+
+        this_ele_constitutive_matrix = rotate_2d_constitutive_matrix(constitutive_matrix,element_theta_orientations[ele,0])
+
+        # get the elemental stiffness matrix
+        k_ele = (k_el_function(j_det_cache[ele], B_cache[ele],this_ele_constitutive_matrix,dN_cache)) * (element_densities[ele] ** penalization_exponent)
+
+        # get the relevent dofs and add the elemental stiffness to the global
+        nodal_dofs = nodal_dofs_cache[ele]
+
+
+        # Test values to check assignment
+        #print(f"Nodal dofs are:\n{nodal_dofs}")
+
+        
+        # Generate index pairs
+        I, J = np.meshgrid(nodal_dofs, nodal_dofs, indexing="ij")
+
+        # Append flattened blocks
+        rows.append(I.ravel())
+        cols.append(J.ravel())
+        vals.append(k_ele.ravel())
+
+    # Final sparse matrix assembly (single pass)
+    rows = np.concatenate(rows)
+    cols = np.concatenate(cols)
+    vals = np.concatenate(vals)
+
+    k_global_stiffness_matrix_csr = scipy.sparse.coo_matrix(
+        (vals, (rows, cols)),
+        shape=(ndof, ndof)
+    ).tocsr()
+
+    return k_global_stiffness_matrix_csr
+
 # Solution functions
 
 def solve_unknown_displacements_forces(global_k, fixed_dofs, free_dofs, displacements, loads):
@@ -243,7 +317,7 @@ def solve_unknown_displacements_forces(global_k, fixed_dofs, free_dofs, displace
 
     return displacements, reactions
 
-def get_dN_cache():
+def get_2d_dN_cache():
     gauss = 1.0 / np.sqrt(3)
 
     gauss_points = [
@@ -410,6 +484,42 @@ def strain_energy_gradient_with_respect_to_2D_q4_ele_density_full_cache(node_coo
         gradient_wrt_density[ele] = -penalization_exponent * (element_densities[ele] ** penalization_exponent-1) * np.dot(np.transpose(this_ele_displacements), np.dot(k_ele, this_ele_displacements))
 
     return gradient_wrt_density
+
+def strain_energy_gradient_with_respect_to_2D_q4_ele_density_theta_full_cache(node_coordinates, nodal_displacements, element_nodes, element_densities, element_theta_orientations, k_el_function, constitutive_matrix,j_det_cache, B_cache, dN_cache,penalization_exponent=3):
+    #print("There is currently something wrong with calculating the gradient wrt density")
+    
+    num_ele = element_nodes.shape[0]
+    dof_per_node = 2 # because 2D
+
+    # initialize gradient WithRespectTo
+    gradient_wrt_density = np.zeros((num_ele,1))
+    gradient_wrt_theta = np.zeros((num_ele,1))
+
+    # Go through and calculate the gradient at each element
+    for ele in range(num_ele):
+
+        # Get the nodes for this element and their coordinates
+        ele_nodes = element_nodes[ele, :]
+        ele_node_coords = node_coordinates[ele_nodes.flatten(),:]
+
+        # get the elemental stiffness matrix
+        k_ele = (k_el_function(j_det_cache[ele], B_cache[ele],constitutive_matrix,dN_cache)) * (element_densities[ele] ** penalization_exponent)
+        
+        # Follow the schmidt paper for how to get derivatives for rotation
+        dr_dtheta = get_2d_dr_dtheta(constitutive_matrix, element_theta_orientations[ele,0])  # Defined in Schmidt equation 17
+        dk_dtheta = k_el_function(j_det_cache[ele], B_cache[ele],dr_dtheta,dN_cache)  # Defined in Schmidt equation 17
+        # get the relevent dofs and add the elemental stiffness to the global
+        nodal_dofs = []
+        for node in ele_nodes:
+            for i in range(dof_per_node):
+                nodal_dofs.append(node*dof_per_node+i)
+
+        this_ele_displacements = nodal_displacements[nodal_dofs]
+
+        gradient_wrt_density[ele] = -penalization_exponent * (element_densities[ele] ** penalization_exponent-1) * np.dot(np.transpose(this_ele_displacements), np.dot(k_ele, this_ele_displacements))
+        gradient_wrt_theta[ele] = -(element_densities[ele] ** penalization_exponent) * (this_ele_displacements.T @ dk_dtheta @ this_ele_displacements)
+
+    return gradient_wrt_density, gradient_wrt_theta
 
 
 # Testing

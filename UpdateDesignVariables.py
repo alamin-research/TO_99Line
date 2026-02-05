@@ -149,3 +149,16 @@ def update_density_variables_with_filter_2D(element_nodes, node_coordinates, den
 
     # update the gradient so that the changes are smoothed 
 
+def simple_2D_grid_theta_variable_update_with_filter(element_theta_orientations,gradient_wrt_theta, max_rotation_per_step, weight_filter,ele_num):
+
+    # Scale the rotations so that the largest is max_rotation_per_step
+    max_value_gradient_value = np.max(np.abs(gradient_wrt_theta))
+    #print(f"Max gradient value is {max_value_gradient_value}")
+    scaled_gradient = max_rotation_per_step/max_value_gradient_value * gradient_wrt_theta
+
+    # Update and wrap the new orientations
+    new_ele_thetas = element_theta_orientations + scaled_gradient
+    wrapped_ele_thetas = (new_ele_thetas+ np.pi) % (2*np.pi) - np.pi  #online suggested. might need validated
+
+    return wrapped_ele_thetas
+

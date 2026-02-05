@@ -30,7 +30,9 @@ def ModSIMPSolver():
     num_ele = element_nodes.shape[0]
     num_nodes = node_coordinates.shape[0]
     # precalc the isoparametric shape function derivatives for later use
-    dN_cache = FEA.get_dN_cache()
+    dof_per_node = node_coordinates.shape[1]
+    dN_cache = FEA.get_2d_dN_cache()
+    nodal_dofs_cache, j_det_cache, B_cache = FEA.precache_2d_static_mesh_variables(dof_per_node, dN_cache, node_coordinates, element_nodes)
 
     # # Test printing values
     # print(f"Element nodes:\n{element_nodes}")
@@ -39,13 +41,13 @@ def ModSIMPSolver():
     # 2.  Define the design variables as a numpy array of columns where each row
     # is a variable and the column relates to the the element
     element_densities = np.ones((num_ele,1))
+    element_theta_orientations = np.random.uniform(-np.pi, np.pi, size=element_densities.shape)
     # Set the initial values for each design variable
     vol_frac = 0.5
     element_densities[:,:] = vol_frac  # Set the Inital Volume fraction
     
     # 3. Set Boundary Conditions
     # Manual definition below
-    dof_per_node = node_coordinates.shape[1]
     fixed_dofs = []
     fixed_dofs = GetBoundaryConditions.add_fixed_dof_to_node_near_position_to_2D_rectangular_mesh(current_fixed=fixed_dofs, node_x_position=nelx, node_y_position=0, radius=0, node_coordinates=node_coordinates, fix_in_x=False)
     fixed_dofs = GetBoundaryConditions.add_rolling_edge_fixed_in_y_to_2D_rectangular_mesh(current_fixed=fixed_dofs, edge_x_position=0, node_coordinates=node_coordinates)            
@@ -68,13 +70,14 @@ def ModSIMPSolver():
     
     # 4. Material Properties
     # Main material
-    E1 = 1e9
-    nu1 = 0.3
-    constitutive_matrix = FEA.isotropic2D_plane_stress_constitutive_matrix(E1,nu1)
+    E1 = 130e9
+    E2 = 10e9
+    nu12 = 0.3
+    G12 = 4e9
+    constitutive_matrix = FEA.orthotropic2D_plane_stress_constitutive_matrix(E1,E2,G12,nu12)
     k_el_function = FEA.q4_element_gaussian_quadrature_isoparametric_integration_2points_full_cache
     ndof = dof_per_node * num_nodes
-    nodal_dofs_cache, j_det_cache, B_cache = FEA.precache_2d_static_mesh_variables(dof_per_node, dN_cache, node_coordinates, element_nodes)
-
+    
 
     # 5. Set the inter-loop variables
     # Set the end conditions for the while loop
@@ -84,13 +87,14 @@ def ModSIMPSolver():
     # Set a variable to control whether iterations continue and set it to change
     # within the loop when all conditions are met
     iteration_count = 0
-    max_iterations = 50
+    max_iterations = 500
     all_end_conditions_met = False
     max_iterations_met = False
 
     penalization_exponent = 3
     filter_radius = 10
     step_size = 0.01
+    max_rotation_per_step = 3 * np.pi/180
 
     objective_function_history = []
     
@@ -104,17 +108,20 @@ def ModSIMPSolver():
 
 
     while (not all_end_conditions_met) and (not max_iterations_met):
+
+        #print(f"First 10 element orientations in degrees are:\n{np.rad2deg(element_theta_orientations[0:10,0])}")
         this_while_loop_time = time.time()
         iteration_count+=1
         
         # Store the old design variables
         old_element_densities = np.copy(element_densities)
+        old_element_theta = np.copy(element_theta_orientations)
 
         #print(f"Design variables are: {old_design_variables}")
 
         # Get the global stiffness matrix
         #k_calc_start_time = time.time()
-        k_global = FEA.global_stiffness_2d_variable_density_as_csr_cached(nodal_dofs_cache, ndof, num_ele, element_densities, k_el_function, constitutive_matrix, j_det_cache, B_cache, dN_cache, penalization_exponent=3)
+        k_global = FEA.global_stiffness_2d_variable_density_theta_as_csr_cached(nodal_dofs_cache, ndof, num_ele, element_densities, element_theta_orientations, k_el_function, constitutive_matrix, j_det_cache, B_cache, dN_cache, penalization_exponent=3)
         #k_calc_time = time.time() - k_calc_start_time
         # print("K global found")
 
@@ -136,7 +143,7 @@ def ModSIMPSolver():
 
         # Calculate the gradient WithRespectTo each variable
         #find_density_gradient_start_time = time.time()
-        gradient_wrt__density = FEA.strain_energy_gradient_with_respect_to_2D_q4_ele_density_full_cache(node_coordinates, nodal_displacements, element_nodes, element_densities, k_el_function, constitutive_matrix,j_det_cache, B_cache, dN_cache,penalization_exponent=3)
+        gradient_wrt__density, gradient_wrt_theta = FEA.strain_energy_gradient_with_respect_to_2D_q4_ele_density_theta_full_cache(node_coordinates, nodal_displacements, element_nodes, element_densities, element_theta_orientations, k_el_function, constitutive_matrix,j_det_cache, B_cache, dN_cache,penalization_exponent=3)
         #find_density_gradient_time = time.time() - find_density_gradient_start_time
         #Plotter.plot_2D_weight_gradient(element_nodes,node_coordinates,fixed_dofs,gradient_in=gradient_wrt__density,iteration_num=iteration_count)
         #print(gradient_wrt__density)
@@ -144,12 +151,14 @@ def ModSIMPSolver():
         # Update the design variables
         #update_start_time = time.time()
         element_densities = UpdateDesignVariables.simple_2D_grid_density_variable_update_with_filter(element_densities,gradient_wrt__density, step_size=step_size, volfrac=vol_frac, weight_filter=weight_filter,ele_num=num_ele)        # design_variables[0,:] = design_variables[0,:] + 100*(gradient_wrt__density).reshape(1,-1)
+        element_theta_orientations = UpdateDesignVariables.simple_2D_grid_theta_variable_update_with_filter(element_theta_orientations,gradient_wrt_theta, max_rotation_per_step=max_rotation_per_step, weight_filter=weight_filter,ele_num=num_ele)        # design_variables[0,:] = design_variables[0,:] + 100*(gradient_wrt__density).reshape(1,-1)
+        
         #update_time = time.time() - update_start_time
         # element_densities = np.clip(element_densities, 0, 1)
 
         # print("loop end\n\n\n")
         
-        density_figure = Plotter.plot_2D_mesh_densities(element_nodes, node_coordinates, element_densities, iteration_count)
+        density_figure = Plotter.plot_2D_mesh_densities_thetas(element_nodes, element_theta_orientations, node_coordinates, element_densities, iteration_count,max_line_length=0.5)
 
         
         # Check to see if end conditions were met

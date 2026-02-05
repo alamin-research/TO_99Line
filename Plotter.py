@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.collections import PolyCollection
+from matplotlib.collections import PolyCollection, LineCollection
 from matplotlib.colors import TwoSlopeNorm
 
 # Keep these global so the figure is reused
@@ -159,6 +159,78 @@ def plot_2D_mesh_densities(element_nodes, node_coordinates, densities, iteration
     plt.pause(0.001)
 
     return _fig
+
+def plot_2D_mesh_densities_thetas(element_nodes, element_thetas, node_coordinates, densities, iteration_count, max_line_length=1, theta_in_degrees=False):
+
+    global _fig, _ax, _collection, _colorbar, _line_collection
+
+    densities = densities.flatten()
+    polys = [node_coordinates[elem] for elem in element_nodes]
+    polys = np.asarray(polys)
+
+    # Convert theta to radians if needed
+    thetas_rad = np.deg2rad(element_thetas).reshape(-1) if theta_in_degrees else np.array(element_thetas).reshape(-1)
+
+    if _fig is None:
+        plt.ion()
+        _fig, _ax = plt.subplots()
+
+        # Polygon collection for densities
+        _collection = PolyCollection(
+            polys,
+            array=densities,
+            cmap="gray_r",
+            edgecolors="none",
+            linewidths=0.0
+        )
+        _collection.set_clim(0.0, 1.0)
+        _ax.add_collection(_collection)
+
+        _ax.autoscale()
+        _ax.set_aspect("equal")
+        _colorbar = plt.colorbar(_collection, ax=_ax)
+        _colorbar.set_label("Density")
+
+        # Line collection for element orientation lines
+        segments = []  # must be a plain Python list
+        for elem, theta in zip(element_nodes, thetas_rad):
+            coords = node_coordinates[elem]
+            centroid = coords.mean(axis=0)
+            dx = (max_line_length / 2) * np.cos(theta)
+            dy = (max_line_length / 2) * np.sin(theta)
+            start = centroid - np.array([dx, dy])
+            end   = centroid + np.array([dx, dy])
+            segments.append([start, end])  # each element is shape (2,2)
+
+        _line_collection = LineCollection(segments, colors='yellow', linewidths=1)
+        _ax.add_collection(_line_collection)
+
+    else:
+        _collection.set_array(densities)
+
+        # Update lines
+        segments = []
+        for elem, theta in zip(element_nodes, thetas_rad):
+            coords = node_coordinates[elem]
+            centroid = coords.mean(axis=0)
+            dx = (max_line_length / 2) * np.cos(theta)
+            dy = (max_line_length / 2) * np.sin(theta)
+            start = centroid - np.array([dx, dy])
+            end   = centroid + np.array([dx, dy])
+            segments.append([start, end])
+
+        _line_collection.set_segments(segments)  # still a Python list
+
+    _ax.set_title(f"Topology Density Field. Iteration {iteration_count}")
+    _ax.set_xlabel("X")
+    _ax.set_ylabel("Y")
+
+    _fig.canvas.draw_idle()
+    _fig.canvas.flush_events()
+    plt.pause(0.001)
+
+    return _fig
+
 
 
 
